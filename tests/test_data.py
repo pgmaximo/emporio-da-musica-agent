@@ -46,3 +46,8 @@ def test_orders_are_scoped_to_the_customer():
     assert data.raw_order(lucas, 5) is None          # pedido de outro cliente
     assert data.raw_order(lucas, 999) is None        # pedido inexistente: mesma resposta
     assert data.raw_order(lucas, 4)["status"] == "delivered"
+
+
+def test_category_names_match_tool_literals():
+    from app.core.tools import CATEGORIES
+    assert set(CATEGORIES) == set(data.categories().values())
