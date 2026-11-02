@@ -92,6 +92,6 @@ async def resume(phone: str):
     return {"ok": True}
 
 
-# Por último: as rotas /api acima têm prioridade. Na Vercel, public/ é servido pela CDN e este mount só vale localmente.
-if PUBLIC.exists():
+# Por último: as rotas /api acima têm prioridade. Na Vercel, public/ é servido pela CDN (a doc pede para não montá-lo); o mount vale só localmente.
+if PUBLIC.exists() and not os.getenv("VERCEL"):
     app.mount("/", StaticFiles(directory=PUBLIC, html=True), name="public")

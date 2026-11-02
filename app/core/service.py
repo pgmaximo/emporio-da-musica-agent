@@ -55,7 +55,7 @@ async def _run(agent: Agent, history: list[dict], text: str, ctx: ChatContext, c
     if correction:
         items.append({"role": "developer", "content": correction})
     config = RunConfig(workflow_name="Empório da Música · atendimento", trace_metadata={"phone_suffix": ctx.phone[-4:]},
-                       tracing_disabled=os.getenv("TRACING_DISABLED") == "1")
+                       tracing_disabled=os.getenv("TRACING_DISABLED") == "1", trace_include_sensitive_data=False)  # LGPD: o traço não leva o texto das conversas
     return await Runner.run(agent, items, context=ctx, max_turns=8, run_config=config)
 
 
