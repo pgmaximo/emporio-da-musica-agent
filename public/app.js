@@ -1,6 +1,6 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { contact: null, messages: [], busy: false };
+const state = { contact: null, example: null, messages: [], busy: false, showEn: false };
 
 const GENERIC_CHIPS = ["Quais violões disponíveis até R$ 1000?", "Quanto custa o Takamine GD20?", "Qual o endereço da loja?", "Vocês vendem cordas de violão?"];
 const ORDER_CHIPS = ["Cadê o meu pedido?", "Me arrependi da minha compra, posso devolver?"];
@@ -41,14 +41,58 @@ async function loadContacts() {
   }));
 }
 
+async function loadExamples() {
+  const { examples, clock, models } = await fetch("examples.json").then((r) => r.json());
+  state.exampleMeta = { clock, models };
+  $("examples").replaceChildren(...examples.map((ex) => {
+    const li = document.createElement("li");
+    li.className = "example";
+    const btn = document.createElement("button");
+    btn.innerHTML = `<span class="avatar">★</span><span><b>${esc(ex.titulo)}</b><small>${esc(ex.customer.nome)} · ${ex.turns.filter((t) => t.role === "user").length} mensagens</small></span>`;
+    btn.onclick = () => selectExample(ex, btn);
+    li.append(btn);
+    return li;
+  }));
+}
+
+const BACKSTAGE_HINT = $("backstage").innerHTML;
+
+function markCurrent(btn) {
+  document.querySelectorAll(".contacts button").forEach((b) => b.removeAttribute("aria-current"));
+  btn?.setAttribute("aria-current", "true");
+  $("backstage").innerHTML = BACKSTAGE_HINT;  // os bastidores da conversa anterior não valem para esta
+}
+
+// Conversa gravada: o mesmo chat e os mesmos bastidores, sem chamar o agente e sem campo de envio.
+function selectExample(ex, btn) {
+  state.contact = null; state.example = ex;
+  markCurrent(btn);
+  $("title").textContent = ex.titulo;
+  $("subtitle").textContent = `${ex.customer.nome} · ${ex.customer.telefone}`;
+  $("avatar").textContent = "★";
+  $("input").disabled = $("send").disabled = true;
+  $("input").placeholder = "Exemplo gravado (só leitura)";
+  $("chips").replaceChildren();
+  $("reset").hidden = true;
+  $("exampleInfo").textContent = `${ex.mostra} Gravada com o agente real, relógio fixo em ${state.exampleMeta.clock}.`;
+  $("examplebar").hidden = false;
+  state.messages = ex.turns;
+  renderMessages();
+  $("messages").scrollTop = 0;  // um exemplo se lê do começo
+  renderBanner(ex.state, ex.handoff, true);
+  setView("chat");
+}
+
 async function selectContact(contact) {
-  state.contact = contact;
-  document.querySelectorAll("#contacts button").forEach((b) => b.removeAttribute("aria-current"));
-  [...document.querySelectorAll("#contacts button")].find((b) => b.textContent.includes(contact.telefone))?.setAttribute("aria-current", "true");
+  state.contact = contact; state.example = null;
+  markCurrent([...document.querySelectorAll("#contacts button")].find((b) => b.textContent.includes(contact.telefone)));
   $("title").textContent = contact.nome;
   $("subtitle").textContent = `${contact.telefone}${contact.cidade ? " · " + contact.cidade : ""}`;
   $("avatar").textContent = contact.id ? initials(contact.nome) : "?";
   $("input").disabled = $("send").disabled = false;
+  $("input").placeholder = "Digite uma mensagem";
+  $("reset").hidden = false;
+  $("examplebar").hidden = true;
   setView("chat");
   renderChips(contact);
   await refresh();
@@ -71,18 +115,19 @@ async function refresh() {
   renderBanner(conv.status, conv.handoff);
 }
 
-function renderBanner(status, handoff) {
+function renderBanner(status, handoff, readonly = false) {
   const banner = $("banner");
   banner.hidden = status !== "human";
   if (status !== "human") return;
-  banner.innerHTML = `<b>Conversa transferida para um atendente humano.</b> ${esc(handoff?.motivo || "")}${handoff?.resumo ? `<br><small>Resumo para o atendente: ${esc(handoff.resumo)}</small>` : ""} <button id="resume">Devolver ao assistente (demo)</button>`;
-  $("resume").onclick = async () => { await api(`/api/conversations/${encodeURIComponent(state.contact.telefone)}/resume`, { method: "POST" }); refresh(); };
+  banner.innerHTML = `<b>Conversa transferida para um atendente humano.</b> ${esc(handoff?.motivo || "")}${handoff?.resumo ? `<br><small>Resumo para o atendente: ${esc(handoff.resumo)}</small>` : ""}${readonly ? "" : ' <button id="resume">Devolver ao assistente (demo)</button>'}`;
+  if (!readonly) $("resume").onclick = async () => { await api(`/api/conversations/${encodeURIComponent(state.contact.telefone)}/resume`, { method: "POST" }); refresh(); };
 }
 
 function bubble(m, index) {
   const div = document.createElement("div");
   div.className = `msg ${m.role}`;
   div.innerHTML = fmt(m.text);
+  if (state.showEn && m.en) div.insertAdjacentHTML("beforeend", `<div class="en">${fmt(m.en)}</div>`);
   const meta = document.createElement("div");
   meta.className = "meta";
   meta.append(hhmm(m.ts));
@@ -162,6 +207,14 @@ $("composer").onsubmit = (e) => { e.preventDefault(); send($("input").value); };
 $("back").onclick = () => setView("contacts");
 $("toggleDrawer").onclick = () => toggleDrawer();
 $("closeDrawer").onclick = () => toggleDrawer(false);
+$("toggleEn").onclick = () => {
+  state.showEn = !state.showEn;
+  $("toggleEn").setAttribute("aria-pressed", String(state.showEn));
+  $("toggleEn").textContent = state.showEn ? "Ocultar tradução (EN)" : "Mostrar tradução (EN)";
+  const top = $("messages").scrollTop;
+  renderMessages();
+  $("messages").scrollTop = top;
+};
 $("reset").onclick = async () => {
   if (!state.contact) return;
   await api(`/api/conversations/${encodeURIComponent(state.contact.telefone)}/reset`, { method: "POST" });
@@ -174,3 +227,4 @@ $("custom").onsubmit = (e) => {
 };
 
 loadContacts().catch((err) => { $("contacts").innerHTML = `<li class="note">Não consegui carregar os contatos: ${esc(err.message)}</li>`; });
+loadExamples().catch(() => { $("examples").innerHTML = `<li class="note">Não consegui carregar os exemplos.</li>`; });

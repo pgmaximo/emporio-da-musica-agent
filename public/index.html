@@ -13,7 +13,12 @@
   <aside class="side">
     <header class="brand"><span class="logo">🎸</span><div><b>Empório da Música</b><small>Simulador de canal · protótipo</small></div></header>
     <p class="clock" id="clock"></p>
-    <ul id="contacts" class="contacts" aria-label="Contatos de teste"></ul>
+    <div class="lists">
+      <h2 class="group">Exemplos gravados (só leitura)</h2>
+      <ul id="examples" class="contacts" aria-label="Conversas de exemplo"></ul>
+      <h2 class="group">Converse com o agente</h2>
+      <ul id="contacts" class="contacts" aria-label="Contatos de teste"></ul>
+    </div>
     <form class="custom" id="custom"><input id="customPhone" inputmode="tel" placeholder="Outro número: (67) 9…" aria-label="Outro número"><button>Abrir</button></form>
     <p class="note">Mesmo núcleo que atenderá o WhatsApp real da loja (o adaptador do webhook é o próximo passo). Aqui, cada contato é um número de cliente.</p>
   </aside>
@@ -26,6 +31,10 @@
       <button class="ghost" id="toggleDrawer" aria-pressed="false">Bastidores</button>
       <button class="icon" id="reset" title="Apagar esta conversa" aria-label="Apagar conversa">🗑</button>
     </header>
+    <div class="examplebar" id="examplebar" hidden>
+      <span id="exampleInfo"></span>
+      <button type="button" id="toggleEn" aria-pressed="false">Mostrar tradução (EN)</button>
+    </div>
     <div class="banner" id="banner" hidden></div>
     <div class="messages" id="messages" aria-live="polite"><p class="empty">Escolha um contato à esquerda para começar.</p></div>
     <div class="chips" id="chips"></div>
