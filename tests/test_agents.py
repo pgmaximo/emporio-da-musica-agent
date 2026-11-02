@@ -120,3 +120,39 @@ def test_claimed_transfer_without_the_tool_is_made_true(store):
     out = go(service.handle_message(ANA, "quero falar com uma pessoa", store=store, agent=agent))
     assert out["reply"] == claim and out["state"] == "human" and out["meta"]["guardrail"] == "corrigido"
     assert go(store.state("67996547821"))["status"] == "human"                            # a promessa virou fato no banco
+
+
+def routed(monkeypatch, pick):
+    """Liga o roteador 'decisions' com uma resposta fixa (None = API fora do ar), sem rede."""
+    async def fake(history, text):
+        return pick
+    monkeypatch.setenv("ROUTER", "decisions")
+    monkeypatch.setattr(service.router, "route", fake)
+
+
+def test_confident_decision_skips_triage_and_starts_at_the_specialist(store, monkeypatch):
+    routed(monkeypatch, {"destino": "catalogo", "confianca": 0.97, "ms": 210})
+    agent, _, _ = agent_with([], [[assistant_message("Posso ajudar com o violão?")]])  # Triagem sem roteiro: se rodasse, o teste falharia
+    out = go(service.handle_message(LUCAS, "tem violão?", store=store, agent=agent))
+    assert out["meta"]["agentes"] == ["Catalogo"] and out["meta"]["roteador"]["via"] == "decisions"
+
+
+def test_low_confidence_falls_back_to_the_triage_agent(store, monkeypatch):
+    routed(monkeypatch, {"destino": "pedidos", "confianca": 0.4, "ms": 200})
+    agent, _, _ = agent_with([[assistant_message("Oi! Como posso ajudar?")]], [])
+    out = go(service.handle_message(LUCAS, "hmm", store=store, agent=agent))
+    assert out["meta"]["agentes"] == ["Triagem"] and out["meta"]["roteador"] == {"via": "llm", "motivo": "confiança baixa", "destino": "pedidos", "confianca": 0.4, "ms": 200}
+
+
+def test_general_topic_goes_to_the_triage_agent(store, monkeypatch):
+    routed(monkeypatch, {"destino": "geral", "confianca": 0.99, "ms": 200})
+    agent, _, _ = agent_with([[assistant_message("Oi! Como posso ajudar?")]], [])
+    out = go(service.handle_message(LUCAS, "oi", store=store, agent=agent))
+    assert out["meta"]["agentes"] == ["Triagem"] and out["meta"]["roteador"]["motivo"] == "assunto geral"
+
+
+def test_decisions_api_down_falls_back_to_the_triage_agent(store, monkeypatch):
+    routed(monkeypatch, None)
+    agent, _, _ = agent_with([[assistant_message("Oi! Como posso ajudar?")]], [])
+    out = go(service.handle_message(LUCAS, "oi", store=store, agent=agent))
+    assert out["reply"] == "Oi! Como posso ajudar?" and out["meta"]["roteador"] == {"via": "llm", "motivo": "Decisions API indisponível"}

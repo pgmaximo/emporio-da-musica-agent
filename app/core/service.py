@@ -8,7 +8,7 @@ import time
 from agents import Agent, RunConfig, Runner
 from agents.items import HandoffOutputItem
 
-from . import data, guardrails
+from . import data, guardrails, router
 from .agents import build_agents
 from .store import Store
 from .tools import ChatContext
@@ -44,6 +44,19 @@ def get_agent() -> Agent:
     global _agent
     _agent = _agent or build_agents()
     return _agent
+
+
+async def _start_agent(triage: Agent, history: list[dict], text: str) -> tuple[Agent, dict]:
+    """Quem começa a execução: o especialista que a Decisions API escolheu com confiança, ou a Triagem LLM (assunto geral, dúvida ou API fora)."""
+    if not router.enabled():
+        return triage, {"via": "llm"}
+    pick = await router.route(history, text)
+    if pick is None:
+        return triage, {"via": "llm", "motivo": "Decisions API indisponível"}
+    specialist = next((a for a in triage.handoffs if a.name.lower() == pick["destino"]), None)
+    if specialist is None or pick["confianca"] < router.min_confidence():
+        return triage, {"via": "llm", "motivo": "confiança baixa" if specialist else "assunto geral", **pick}
+    return specialist, {"via": "decisions", **pick}
 
 
 def _trace_view(ctx: ChatContext) -> list[dict]:
@@ -99,8 +112,9 @@ async def handle_message(phone: str, text: str, *, store: Store | None = None, a
     history = await store.history(phone, HISTORY_MESSAGES)
     runs, correction = [], None  # uma execução por tentativa: os bastidores somam caminho e tokens de todas
     try:
+        start, routing = await _start_agent(agent, history, text)
         for attempt in (0, 1):
-            runs.append(await _run(agent, history, text, ctx, correction))
+            runs.append(await _run(start, history, text, ctx, correction))
             reply = str(runs[-1].final_output or "").strip()
             problems = _problems(reply, ctx, text)
             if not problems:
@@ -114,9 +128,9 @@ async def handle_message(phone: str, text: str, *, store: Store | None = None, a
         log.exception("falha ao executar o agente")
         raise AgentUnavailable(str(exc)) from exc
 
-    path = list(dict.fromkeys([agent.name] + [i.target_agent.name for r in runs for i in r.new_items if isinstance(i, HandoffOutputItem)]))
+    path = list(dict.fromkeys([start.name] + [i.target_agent.name for r in runs for i in r.new_items if isinstance(i, HandoffOutputItem)]))
     usages = [r.context_wrapper.usage for r in runs]
-    meta = {"agentes": path, "tools": _trace_view(ctx), "guardrail": check, "latencia_ms": round((time.perf_counter() - started) * 1000),
+    meta = {"agentes": path, "roteador": routing, "tools": _trace_view(ctx), "guardrail": check, "latencia_ms": round((time.perf_counter() - started) * 1000),
             "tokens": {"entrada": sum(u.input_tokens for u in usages), "saida": sum(u.output_tokens for u in usages),
                        "total": sum(u.total_tokens for u in usages), "chamadas": sum(u.requests for u in usages)},
             "cliente": customer["primeiro_nome"] if customer else None}

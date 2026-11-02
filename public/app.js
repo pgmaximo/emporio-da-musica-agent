@@ -140,12 +140,20 @@ function showBackstage(m) {
   $("backstage").innerHTML = `
     <p>${meta.agentes.map((a) => `<span class="pill">${esc(a)}</span>`).join('<span class="arrow">→</span>')}</p>
     <dl class="kv">
+      <dt>Roteador</dt><dd>${esc(routerLine(meta.roteador))}</dd>
       <dt>Cliente</dt><dd>${esc(meta.cliente || "não identificado (só catálogo e políticas)")}</dd>
       <dt>Guardrail</dt><dd class="${guard[0]}">${esc(guard[1])}</dd>
       <dt>Tokens</dt><dd>${t.entrada ?? "?"} entrada · ${t.saida ?? "?"} saída · ${t.chamadas ?? "?"} chamadas ao modelo</dd>
       <dt>Latência</dt><dd>${meta.latencia_ms} ms</dd>
     </dl>
     <b>Ferramentas chamadas (${(meta.tools || []).length})</b>${tools || "<p class='empty'>Nenhuma: resposta direta.</p>"}`;
+}
+
+function routerLine(r) {
+  if (!r) return "Triagem (modelo pequeno)";
+  const pick = r.destino ? `${r.destino} ${Math.round(r.confianca * 100)}% em ${r.ms} ms` : "";
+  if (r.via === "decisions") return `Decisions API → ${pick}`;
+  return r.motivo ? `Triagem (modelo pequeno). Decisions API: ${r.destino ? `${pick}, ${r.motivo}` : r.motivo}` : "Triagem (modelo pequeno)";
 }
 
 function prettify(raw) { try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; } }

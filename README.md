@@ -49,7 +49,7 @@ python -m pytest -q
 python scripts/generate_examples.py
 ```
 
-Configuration lives in `.env` (see [`.env.example`](.env.example)): `MODEL_ROUTER`, `MODEL_SPECIALIST`, `DATABASE_URL` (empty = local SQLite; a Postgres URL in production), and `EMPORIO_NOW` to pin the agent's clock for demos and tests.
+Configuration lives in `.env` (see [`.env.example`](.env.example)): `ROUTER` (`decisions` or `llm`), `MODEL_ROUTER`, `MODEL_SPECIALIST`, `DATABASE_URL` (empty = local SQLite; a Postgres URL in production), and `EMPORIO_NOW` to pin the agent's clock for demos and tests.
 
 Deployment: the simulator and API run on **Vercel** (FastAPI, Python 3.13) with **Supabase Postgres** for persistence. Vercel serves `public/` from its CDN; the function is `app/main.py`.
 
@@ -63,10 +63,14 @@ flowchart LR
     C2[Simulator web page] --> H
     C3[WhatsApp webhook - planned] -.-> H
     H["handle_message(phone, text)"] --> S[(History per phone<br/>SQLite / Postgres)]
-    H --> T[Triage agent<br/>small model]
-    T -->|handoff| CA[Catalog agent]
-    T -->|handoff| OR[Orders agent]
-    T -->|handoff| PO[Policies agent]
+    H --> R{"Router: OpenAI Decisions API<br/>picks a desk + confidence"}
+    R -->|confident| CA[Catalog agent]
+    R -->|confident| OR[Orders agent]
+    R -->|confident| PO[Policies agent]
+    R -->|general topic, low confidence,<br/>or API error| T[Triage agent<br/>small model]
+    T -->|handoff| CA
+    T -->|handoff| OR
+    T -->|handoff| PO
     CA --> TL[Tools: products, payment, shipping]
     OR --> TL2[Tools: my orders, return assessment]
     PO --> TL3[Tools: policy by topic, store hours, human hand-off]
@@ -75,7 +79,7 @@ flowchart LR
     H --> V{Output verification<br/>empty? unverified price?<br/>fake transfer claim?}
 ```
 
-A message enters through any channel as `handle_message(phone, text)`. The phone number identifies the customer. A **triage agent** (small, fast model) decides who answers and hands the conversation to one of three **specialists**, each with only the few tools it needs. The reply is **verified in code** before it is sent; if verification fails the agent gets one corrective retry, and after that a safe fallback is used.
+A message enters through any channel as `handle_message(phone, text)`. The phone number identifies the customer. A **router** (OpenAI's Decisions API) picks the desk that should answer, with a confidence value, and the conversation starts directly at one of three **specialists**, each with only the few tools it needs. Greetings, accessories, off-topic requests, low-confidence picks and any API error go to a **triage agent** (a small LLM agent) instead, which answers or hands off by itself. The reply is **verified in code** before it is sent; if verification fails the agent gets one corrective retry, and after that a safe fallback is used.
 
 | Piece | File |
 |---|---|
@@ -102,7 +106,28 @@ The brief asks the agent to know *when to query data* and *when to consult polic
 - **The SDK gives handoffs, tool schemas from type hints, context injection and tracing** with very little code. Large companies running agents on WhatsApp (for example Magalu's "Lu", which uses several role-specific agents) also split roles; I reproduced that at the smallest useful scale instead of building a heavier graph.
 - I did not use LangGraph or a hand-written loop: the flow has no cycles or long-running state, so a graph would be ceremony.
 
-### Models: `gpt-5.4-nano` (router) and `gpt-5.4-mini` (specialists)
+### Router: OpenAI Decisions API, with the triage agent as plan B
+
+Routing is a closed-set classification ("which of these four desks?"), which is what the Decisions API is for: one `choice` question in, one choice and a confidence out, billed on input tokens only. [`app/core/router.py`](app/core/router.py) is about 40 lines. Routing happens in code before any agent runs, so a confident pick skips a whole LLM step.
+
+I compared it with the triage agent on the **same 28 labelled messages** ([`scripts/eval_router.py`](scripts/eval_router.py); greetings, accessories, prompt injection, follow-ups that need the previous turn such as "and in PIX?"):
+
+| | Correct | Median latency |
+|---|---|---|
+| Decisions API alone | 28 / 28 | 361 and 366 ms (two runs) |
+| Triage agent (`gpt-5.4-nano`) alone | 24 / 28 | 1455 and 1049 ms (two runs) |
+| Decisions API with triage fallback (what runs) | 27 / 28 | n/a |
+
+Read these numbers with care. The sample is small and I wrote the phrases and the desk descriptions myself, so it is a sanity check, not a benchmark. Two of the triage "misses" are arguably fine (it answered the store address itself, and in this test the customer was not identified, so it answered an order question itself). Also, the one miss with fallback is a "thanks!" that the fallback sent to Catalog, which is harmless.
+
+How it degrades, so a beta service cannot take the store down:
+
+- `general` (greetings, accessories, off-topic, prompt-extraction attempts) always goes to the triage agent, which keeps the persona and scope rules.
+- A confidence below `ROUTER_MIN_CONFIDENCE` (default 0.6) goes to the triage agent. In my 28 messages the lowest confidence was 0.43 (and that pick was correct, so the fallback would have cost one extra LLM step); the threshold is a judgement call, not a tuned value.
+- Any exception or a timeout (8 s, no retries) goes to the triage agent; the customer never sees the error.
+- `ROUTER=llm` turns the Decisions API off. The pick and confidence are shown in the "Bastidores" drawer.
+
+### Models: `gpt-5.4-nano` (triage agent) and `gpt-5.4-mini` (specialists)
 
 Chosen after listing the models available to the key and **measuring**, not guessing:
 
@@ -182,6 +207,7 @@ How large Brazilian companies run agents on WhatsApp (Magalu, Movida, ClickBus) 
 
 - **The real WhatsApp connection is not built.** It needs a Meta Cloud API webhook (`GET` verification, `POST` with `X-Hub-Signature-256` validation, replies through the Graph API, the 24-hour customer-service window and templates for out-of-window messages). The core is already channel-independent, so it is an adapter of roughly 60 lines. I cut it to keep the case simple, as the brief asks.
 - **Non-determinism of a small model.** Empty replies, skipped tool calls and "I did it" claims happen occasionally. The verification loop catches empty replies, unsupported prices and fake transfers, but not every kind of wrong answer (for example, asking the customer to repeat something it already knew). I measured and mitigated the worst one (tool use 5/8 → 8/8) but there is **no automated evaluation suite**: quality was checked with five recorded scenarios and about two dozen manual probes. Next step: a labelled regression set of ~50 conversations with assertions on routing, tool calls and forbidden content, run in CI, plus an LLM judge for tone.
+- **The router depends on a beta API that supports a single model** (`gpt-6-luna`). The triage agent is the safety net and the reason it is still in the code. I did not test behaviour under rate limiting or a long outage, and the 28-message comparison above is too small to claim an accuracy figure.
 - **History is a sliding window of 20 messages** with no summarisation.
 - **Holidays**: only fixed-date national holidays are known; Carnival, Good Friday and Corpus Christi are not.
 - **Read-only agent**: it cannot create, cancel or change orders; those go to a human by design.
