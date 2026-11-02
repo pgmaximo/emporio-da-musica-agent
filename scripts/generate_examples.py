@@ -22,8 +22,8 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(ROOT / ".env")
 from openai import AsyncOpenAI  # noqa: E402
 
-from app.core import clock, data, rules, service  # noqa: E402
-from app.core.agents import DEFAULT_ROUTER_MODEL, DEFAULT_SPECIALIST_MODEL  # noqa: E402
+from app import clock, data, rules, service  # noqa: E402
+from app.agents import DEFAULT_ROUTER_MODEL, DEFAULT_SPECIALIST_MODEL  # noqa: E402
 
 OUT = ROOT / "examples"
 NOW = "2026-02-19T10:30:00"  # a Thursday; the orders dataset covers Oct/2025 to Mar/2026

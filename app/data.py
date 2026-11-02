@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .rules import brl, money
 
-DATA_DIR = Path(os.getenv("EMPORIO_DATA_DIR") or Path(__file__).resolve().parents[2] / "data")
+DATA_DIR = Path(os.getenv("EMPORIO_DATA_DIR") or Path(__file__).resolve().parents[1] / "data")
 
 STATUS_PT = {
     "delivered": "entregue",

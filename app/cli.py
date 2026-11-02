@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from app.core import data, service  # noqa: E402  (depois do .env, que define modelo e chave)
+from app import data, service  # noqa: E402  (depois do .env, que define modelo e chave)
 
 
 def contacts() -> None:

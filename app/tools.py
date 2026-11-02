@@ -1,7 +1,7 @@
 """Tools dos agentes. Cada uma é uma função fina sobre data.py/rules.py e devolve JSON.
 
 Toda tool registra (nome, args, resultado) em ctx.context.trace: alimenta o painel "Bastidores"
-e o guardrail de preços (app/core/guardrails.py).
+e o guardrail de preços (app/guardrails.py).
 """
 from __future__ import annotations
 

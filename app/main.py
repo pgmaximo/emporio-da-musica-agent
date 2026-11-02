@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from app.core import clock, data, rules, service  # noqa: E402
+from app import clock, data, rules, service  # noqa: E402
 
 log = logging.getLogger("emporio")
 PUBLIC = Path(__file__).resolve().parents[1] / "public"

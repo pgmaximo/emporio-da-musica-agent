@@ -20,9 +20,9 @@ from agents import Agent, Runner, RunConfig
 from agents.items import HandoffOutputItem
 from agents.testing import ScriptedModel, assistant_message
 
-from app.core import router
-from app.core.agents import build_agents
-from app.core.tools import ChatContext
+from app import router
+from app.agents import build_agents
+from app.tools import ChatContext
 
 TAKAMINE = [{"role": "user", "content": "E o Takamine GD20, quanto custa?"},
             {"role": "assistant", "content": "O Takamine GD20 está R$ 2.199,00 e temos 5 em estoque."}]

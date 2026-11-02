@@ -20,7 +20,7 @@ Requires Python 3.10+ (developed on 3.14, deployed on 3.13) and an OpenAI API ke
 
 ```bash
 python -m venv .venv && source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 cp .env.example .env                                      # then set OPENAI_API_KEY=sk-...
 ```
 
@@ -37,19 +37,13 @@ python -m app.cli --phone "(67) 99654-7821" --bastidores  # chat as Ana; --basti
 uvicorn app.main:app --reload                             # then open http://127.0.0.1:8000
 ```
 
-**Tests** (32, no network and no API key needed; the agent runs against the SDK's scripted test model):
-
-```bash
-python -m pytest -q
-```
-
 **Regenerate the example conversations** (calls the real model):
 
 ```bash
 python scripts/generate_examples.py
 ```
 
-Configuration lives in `.env` (see [`.env.example`](.env.example)): `ROUTER` (`decisions` or `llm`), `MODEL_ROUTER`, `MODEL_SPECIALIST`, `DATABASE_URL` (empty = local SQLite; a Postgres URL in production), and `EMPORIO_NOW` to pin the agent's clock for demos and tests.
+Configuration lives in `.env` (see [`.env.example`](.env.example)): `ROUTER` (`decisions` or `llm`), `MODEL_ROUTER`, `MODEL_SPECIALIST`, `DATABASE_URL` (empty = local SQLite; a Postgres URL in production), and `EMPORIO_NOW` to pin the agent's clock for demos and the example conversations.
 
 Deployment: the simulator and API run on **Vercel** (FastAPI, Python 3.13) with **Supabase Postgres** for persistence. Vercel serves `public/` from its CDN; the function is `app/main.py`. The function is pinned to `gru1` (São Paulo) in [`vercel.json`](vercel.json), next to the database: I found in a browser test that with the default region (US East) one message took 11 s, mostly database round trips across the continent, and about 2 s after pinning the region (a greeting; a catalog or order question takes 3 to 6 s because it calls the specialist model).
 
@@ -83,16 +77,16 @@ A message enters through any channel as `handle_message(phone, text)`. The phone
 
 | Piece | File |
 |---|---|
-| Channel-independent core | [`app/core/service.py`](app/core/service.py) |
-| Persona, agents, routing prompts | [`app/core/agents.py`](app/core/agents.py) |
-| Tools exposed to the model | [`app/core/tools.py`](app/core/tools.py) |
-| Business rules (PIX, installments, shipping, returns, hours) | [`app/core/rules.py`](app/core/rules.py) |
-| CSV access, search, phone normalisation | [`app/core/data.py`](app/core/data.py) |
-| Output verification | [`app/core/guardrails.py`](app/core/guardrails.py) |
-| History and daily usage limits | [`app/core/store.py`](app/core/store.py) |
+| Channel-independent core | [`app/service.py`](app/service.py) |
+| Persona, agents, routing prompts | [`app/agents.py`](app/agents.py) |
+| Tools exposed to the model | [`app/tools.py`](app/tools.py) |
+| Business rules (PIX, installments, shipping, returns, hours) | [`app/rules.py`](app/rules.py) |
+| CSV access, search, phone normalisation | [`app/data.py`](app/data.py) |
+| Output verification | [`app/guardrails.py`](app/guardrails.py) |
+| History and daily usage limits | [`app/store.py`](app/store.py) |
 | API + simulator page | [`app/main.py`](app/main.py), [`public/`](public/) |
 
-The core is about 930 lines of Python. The simulator has a **"Bastidores" (behind the scenes) drawer** that shows, for every reply, which agents handled it, which tools were called with which arguments and results, the verification outcome, tokens and latency.
+The agent is about 1,000 lines of Python, flat in `app/`. The simulator has a **"Bastidores" (behind the scenes) drawer** that shows, for every reply, which agents handled it, which tools were called with which arguments and results, the verification outcome, tokens and latency.
 
 ---
 
@@ -108,7 +102,7 @@ The brief asks the agent to know *when to query data* and *when to consult polic
 
 ### Router: OpenAI Decisions API, with the triage agent as plan B
 
-Routing is a closed-set classification ("which of these four desks?"), which is what the Decisions API is for: one `choice` question in, one choice and a confidence out, billed on input tokens only. [`app/core/router.py`](app/core/router.py) is about 40 lines. Routing happens in code before any agent runs, so a confident pick skips a whole LLM step.
+Routing is a closed-set classification ("which of these four desks?"), which is what the Decisions API is for: one `choice` question in, one choice and a confidence out, billed on input tokens only. [`app/router.py`](app/router.py) is about 40 lines. Routing happens in code before any agent runs, so a confident pick skips a whole LLM step.
 
 I compared it with the triage agent on the **same 28 labelled messages** ([`scripts/eval_router.py`](scripts/eval_router.py); greetings, accessories, prompt injection, follow-ups that need the previous turn such as "and in PIX?"):
 
@@ -140,7 +134,7 @@ Chosen after listing the models available to the key and **measuring**, not gues
 
 - **Products, orders, customers, promotions** are tabular, so they are queried with typed tools over an in-memory copy of the CSVs (65 products, 50 customers, 20 orders). Search is accent-insensitive token matching with a fuzzy fallback, plus category and price filters. A vector store would be slower, less exact, and could return a price from the wrong product.
 - **Policies** are an 8-page manual with 9 topics. `consultar_politica(topic)` returns the exact section for a topic from [`data/politicas.md`](data/politicas.md) (a faithful transcription: automatic PDF extraction produced one word per line). It is exact, cheap and traceable. With a 300-page manual I would switch to embeddings plus a reranker; here it would add moving parts for no gain.
-- **Business rules are code, not prompt.** PIX discount (5%, never on promotional prices), installments by tier (§3.1), shipping, the 7/30/90-day return windows and opening hours are pure functions with unit tests. The model never does arithmetic: it calls a tool and repeats the result.
+- **Business rules are code, not prompt.** PIX discount (5%, never on promotional prices), installments by tier (§3.1), shipping, the 7/30/90-day return windows and opening hours are pure functions in [`app/rules.py`](app/rules.py). The model never does arithmetic: it calls a tool and repeats the result.
 
 ### Prompt strategy
 
@@ -168,7 +162,7 @@ Run on every reply, in code, at no model cost:
 2. **Unverified price**: every `R$ x` in the reply must appear in a tool result or in the customer's own message; otherwise one corrective retry, then a safe message plus human hand-off.
 3. **Unbacked action claim**: if the agent says "I'm passing you to a human" without having called the transfer tool, it is retried, and if it still did not call it the system performs the transfer so the sentence becomes true.
 
-These three exist because they actually happened while I read real conversations; see [`tests/test_agents.py`](tests/test_agents.py) and [`tests/test_guardrails.py`](tests/test_guardrails.py).
+These three exist because they actually happened while I read real conversations. The checks live in [`app/guardrails.py`](app/guardrails.py) and the retry logic in [`app/service.py`](app/service.py).
 
 ### Human hand-off
 
@@ -206,7 +200,7 @@ How large Brazilian companies run agents on WhatsApp (Magalu, Movida, ClickBus) 
 ## 5. Known limitations and what I would do with more time
 
 - **The real WhatsApp connection is not built.** It needs a Meta Cloud API webhook (`GET` verification, `POST` with `X-Hub-Signature-256` validation, replies through the Graph API, the 24-hour customer-service window and templates for out-of-window messages). The core is already channel-independent, so it is an adapter of roughly 60 lines. I cut it to keep the case simple, as the brief asks.
-- **Non-determinism of a small model.** Empty replies, skipped tool calls and "I did it" claims happen occasionally. The verification loop catches empty replies, unsupported prices and fake transfers, but not every kind of wrong answer (for example, asking the customer to repeat something it already knew). I measured and mitigated the worst one (tool use 5/8 → 8/8) but there is **no automated evaluation suite**: quality was checked with five recorded scenarios and about two dozen manual probes. Next step: a labelled regression set of ~50 conversations with assertions on routing, tool calls and forbidden content, run in CI, plus an LLM judge for tone.
+- **Non-determinism of a small model.** Empty replies, skipped tool calls and "I did it" claims happen occasionally. The verification loop catches empty replies, unsupported prices and fake transfers, but not every kind of wrong answer (for example, asking the customer to repeat something it already knew). I measured and mitigated the worst one (tool use 5/8 → 8/8) but there are **no automated tests or evaluation suite in the final tree**: I wrote unit tests (rules, data, privacy, guardrails) and scripted-model tests (routing, retries, hand-off) while building, and removed them to keep the repository simple (they are in the git history). Quality is checked with five recorded scenarios and about two dozen manual probes. Next step: a labelled regression set of ~50 conversations with assertions on routing, tool calls and forbidden content, run in CI, plus an LLM judge for tone.
 - **The router depends on a beta API that supports a single model** (`gpt-6-luna`). The triage agent is the safety net and the reason it is still in the code. I did not test behaviour under rate limiting or a long outage, and the 28-message comparison above is too small to claim an accuracy figure.
 - **History is a sliding window of 20 messages** with no summarisation.
 - **Holidays**: only fixed-date national holidays are known; Carnival, Good Friday and Corpus Christi are not.
@@ -225,8 +219,8 @@ I built this with **Claude Code** (Anthropic's CLI agent): Claude Opus for plann
 
 1. **Reading and brainstorming first.** I had it read the case, the policy PDF and the six CSVs, and report the traps in the data (contradictions in the manual, a catalog smaller than described, stale dates, privacy). We debated the architecture before any code was written.
 2. **Research.** It researched how large companies run WhatsApp agents and Meta's chatbot policy, and verified the current OpenAI Agents SDK, Vercel and Supabase documentation instead of relying on memory (for example, which reasoning-effort values each model family accepts).
-3. **Plan, then build in small commits**, with unit tests for the rules and scripted-model tests for orchestration, routing, verification and privacy. I mutation-checked the privacy test (breaking the per-customer filter made two tests fail).
-4. **Run the real thing and read the conversations.** The most valuable step: the generated examples exposed bugs the tests could not (an empty reply, a transfer promised but not performed, a skipped calculation). Each became a fix plus a regression test.
+3. **Plan, then build in small commits**, with unit tests for the rules and scripted-model tests for orchestration, routing, verification and privacy while building (removed from the final tree at the end to keep the repository simple; they are in the git history). I mutation-checked the privacy test (breaking the per-customer filter made two tests fail).
+4. **Run the real thing and read the conversations.** The most valuable step: the generated examples exposed bugs the tests could not (an empty reply, a transfer promised but not performed, a skipped calculation). Each became a fix in the code or the prompt.
 5. **Visual check in a browser** (desktop and mobile widths), which found a bug in how the "behind the scenes" panel summed retries.
 6. **Integrations through connectors**: GitHub repository, Supabase project (tables, row-level security, a least-privilege role) and Vercel were set up through the assistant's tools, with me approving each outward-facing action.
 
@@ -249,12 +243,10 @@ All generated by [`scripts/generate_examples.py`](scripts/generate_examples.py) 
 ## Repository layout
 
 ```
-app/core/      service.py agents.py tools.py rules.py data.py guardrails.py store.py clock.py
-app/main.py    FastAPI: simulator API
-app/cli.py     terminal chat
+app/           the agent, flat: service, router, agents, tools, rules, data, guardrails, store, clock
+               main.py = FastAPI (simulator API), cli.py = terminal chat
 public/        simulator page (plain HTML/CSS/JS, no build step)
 data/          the store's CSVs and policies (politicas.md = transcription of the PDF)
 examples/      5 generated conversations
-scripts/       generate_examples.py
-tests/         rules, data, orchestration (scripted model), guardrails, API
+scripts/       generate_examples.py (examples), eval_router.py (router comparison)
 ```
