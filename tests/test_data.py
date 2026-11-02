@@ -56,3 +56,9 @@ def test_category_names_match_tool_literals():
 def test_alternatives_prefer_similar_instruments():
     alts = data.search_products("Shelby SN-7C")["alternativas_disponiveis"]
     assert all("7 Cordas" in a["nome"] for a in alts[:2])  # um violão de 7 cordas se substitui por outro de 7 cordas
+
+
+def test_expired_promotion_only_shows_in_detail_view():
+    p = data.search_products("Takamine GD20")["produtos"][0]
+    assert "promocao_anterior_encerrada" not in p                       # busca comum não polui a resposta
+    assert "promocao_anterior_encerrada" in data.product_view(data.get_product(p["id"]), detail=True)

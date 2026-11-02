@@ -38,6 +38,8 @@ REGRAS INEGOCIÁVEIS
    pessoa existe.
 7. Se não souber, se faltar informação ou se o caso não estiver coberto pelo manual (ex.: cancelar um pedido ainda não enviado),
    não improvise: use transferir_para_humano e avise o prazo de retorno de 24 horas úteis. Em reclamação, ouça com empatia antes.
+   Se o cliente pedir uma pessoa/atendente, chame transferir_para_humano. NUNCA diga que transferiu, encaminhou ou registrou algo
+   sem ter chamado a ferramenta nesta mesma resposta; sem a ferramenta, apenas ofereça ("posso chamar um atendente?").
 8. Fora do horário, atenda normalmente, mas diga quando a loja volta a abrir se o cliente precisar de algo presencial ou humano.
 """
 
@@ -52,12 +54,13 @@ Ao transferir, não escreva nada para o cliente: o especialista responde."""
 
 CATALOG = """Você é o especialista em catálogo. Use buscar_produtos/detalhes_produto/calcular_pagamento/calcular_frete e consultar_politica para promoções e pagamento.
 Ao citar um produto traga nome, preço (e promoção, se houver) e disponibilidade. Em listas, no máximo 5 itens e diga se há mais.
+Se o cliente falar de "esse violão", "no PIX" ou "parcelado" sem dizer o nome, use o último produto citado na conversa: busque-o com buscar_produtos e calcule com calcular_pagamento. Não peça para repetir o nome.
 Leia o campo `disponibilidade` e deixe o status claro logo no início, em frase natural (nunca copie a palavra do campo como abertura), com o sentido exato:
 - "descontinuado": o modelo saiu de linha e não faz mais parte do catálogo. Diga isso e ofereça 2 ou 3 de `alternativas_disponiveis` (nome e preço).
 - "esgotado no momento": está temporariamente sem estoque. Diga isso primeiro e ofereça as alternativas.
 - "em breve": ainda não está à venda.
 Se a busca não retornar nada parecido, diga que não temos esse item no momento e, em vez de sugerir algo que você não viu, pergunte se o cliente quer conhecer as categorias com produtos hoje: {categorias}. Respeite o tipo do instrumento (violão não é guitarra).
-Mencione promoção encerrada (`promocao_anterior_encerrada`) só se o cliente perguntou por promoção ou desconto; nesse caso diga que encerrou e passe o preço atual."""
+Se o cliente perguntar por promoção ou desconto de um produto, consulte detalhes_produto: se houver `promocao_anterior_encerrada`, diga com transparência que encerrou e passe o preço atual. Nunca prometa desconto que não esteja vigente."""
 ORDERS = "Você é o especialista em pedidos. Use meus_pedidos para status/rastreio e avaliar_devolucao para devolução, troca ou garantia (cite prazo e condições que a ferramenta devolver). Se o cliente não disser qual pedido e houver mais de um, pergunte. Pedido ainda não enviado que o cliente quer cancelar: transfira para humano."
 POLICIES = "Você é o especialista em políticas e o responsável por passar clientes a um atendente. Use consultar_politica (e status_loja_agora para horários) e responda só com o que o manual diz, de forma resumida e prática. Se o cliente pedir uma pessoa/atendente, estiver reclamando ou o manual não cobrir o caso, use transferir_para_humano (resumindo o caso) e avise o prazo de retorno de 24 horas úteis."
 
@@ -66,7 +69,8 @@ def _instructions(role: str):
     def build(ctx: RunContextWrapper[ChatContext], agent: Agent[ChatContext]) -> str:
         customer = ctx.context.customer
         who = (f"Cliente identificado: {customer['nome']} (cidade: {customer['cidade']}). Trate por {customer['primeiro_nome']}."
-               if customer else "Cliente NÃO identificado: o número não consta no cadastro. Só catálogo e políticas; nenhum dado de pedido.")
+               if customer else "Cliente NÃO identificado: o número não consta no cadastro. Só catálogo e políticas; nenhum dado de pedido. "
+                                 "Se pedirem status, rastreio ou devolução de um pedido, explique que por segurança só consulta pedidos do número cadastrado e ofereça um atendente.")
         status = rules.store_status(clock.now())
         when = f"Agora: {status['agora']}. Loja {'aberta' if status['aberta_agora'] else 'fechada'}" + \
                (f" (volta {status['proxima_abertura']})." if status["proxima_abertura"] else ".")
@@ -74,21 +78,25 @@ def _instructions(role: str):
     return build
 
 
-def model_settings(model: str | object | None) -> ModelSettings:
-    """Atendimento precisa de latência baixa: raciocínio no mínimo. gpt-5.1+ aceita 'none' e rejeita 'minimal'; o gpt-5 original o contrário."""
+def model_settings(model: str | object | None, deep: bool = False) -> ModelSettings:
+    """Raciocínio mínimo no roteador (só classifica). Especialistas usam 'low' (`deep`): medido, o gpt-5.4-mini com 'none' deixou de chamar a
+    tool de cálculo em 3 de 8 tentativas; com 'low', em 0 de 8, por +1,4 s. gpt-5.1+ aceita 'none' e rejeita 'minimal'; o gpt-5 original o contrário."""
     name = model if isinstance(model, str) else ""
-    effort = "none" if re.match(r"gpt-5\.\d", name) else "minimal" if name.startswith("gpt-5") else None
+    if deep:
+        effort = "low" if name.startswith("gpt-5") else None
+    else:
+        effort = "none" if re.match(r"gpt-5\.\d", name) else "minimal" if name.startswith("gpt-5") else None
     return ModelSettings(reasoning=Reasoning(effort=effort)) if effort else ModelSettings()
 
 
 def build_agents(router_model=None, specialist_model=None) -> Agent[ChatContext]:
     router = router_model or os.getenv("MODEL_ROUTER") or DEFAULT_ROUTER_MODEL
     spec = specialist_model or os.getenv("MODEL_SPECIALIST") or DEFAULT_SPECIALIST_MODEL
-    common = [status_loja_agora, transferir_para_humano]  # a Triagem não recebe transferir_para_humano: um modelo pequeno o usava em vez de transferir ao especialista
+    common = [status_loja_agora, transferir_para_humano]
 
-    def agent(name, role, tools, model, description="", handoffs=()):
+    def agent(name, role, tools, model, description="", handoffs=(), deep=True):
         return Agent[ChatContext](name=name, instructions=_instructions(role), tools=tools, model=model,
-                                  model_settings=model_settings(model), handoff_description=description, handoffs=list(handoffs))
+                                  model_settings=model_settings(model, deep), handoff_description=description, handoffs=list(handoffs))
 
     catalog = agent("Catalogo", CATALOG.format(categorias=", ".join(data.sold_categories())), [buscar_produtos, detalhes_produto, calcular_pagamento, calcular_frete, consultar_politica, *common],
                     spec, "Busca de instrumentos, preços, estoque, promoções, formas de pagar um produto")
@@ -96,4 +104,5 @@ def build_agents(router_model=None, specialist_model=None) -> Agent[ChatContext]
                    spec, "Status e rastreio de pedidos do cliente, devolução, troca, arrependimento e garantia de uma compra")
     policies = agent("Politicas", POLICIES, [consultar_politica, *common],
                      spec, "Endereço, horários, pagamento, frete, trocas, garantia, promoções e privacidade em geral")
-    return agent("Triagem", TRIAGE, [status_loja_agora], router, "Porta de entrada", handoffs=[catalog, orders, policies])
+    # A Triagem não recebe transferir_para_humano: um modelo pequeno o usava no lugar de transferir ao especialista.
+    return agent("Triagem", TRIAGE, [status_loja_agora], router, "Porta de entrada", handoffs=[catalog, orders, policies], deep=False)

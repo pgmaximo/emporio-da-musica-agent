@@ -136,7 +136,7 @@ function showBackstage(m) {
   toggleDrawer(true);
   const meta = m.meta, t = meta.tokens || {};
   const tools = (meta.tools || []).map((tool) => `<details><summary><b>${esc(tool.tool)}</b>(${esc(Object.entries(tool.args).filter(([, v]) => v !== null && v !== "").map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", "))})</summary><pre>${esc(prettify(tool.result))}</pre></details>`).join("");
-  const guard = { ok: ["ok", "preços conferidos nas ferramentas"], reescrito: ["bad", "reescrita: a 1ª resposta citava preço sem origem"], bloqueado: ["bad", "bloqueada: preço sem origem, transferida para humano"] }[meta.guardrail] || ["ok", meta.guardrail];
+  const guard = { ok: ["ok", "preços conferidos nas ferramentas"], reescrito: ["bad", "reescrita: a 1ª resposta falhou na verificação"], corrigido: ["bad", "corrigida: prometia transferência sem chamar a ferramenta; o sistema a executou"], bloqueado: ["bad", "bloqueada: preço sem origem, transferida para humano"] }[meta.guardrail] || ["ok", meta.guardrail];
   $("backstage").innerHTML = `
     <p>${meta.agentes.map((a) => `<span class="pill">${esc(a)}</span>`).join('<span class="arrow">→</span>')}</p>
     <dl class="kv">

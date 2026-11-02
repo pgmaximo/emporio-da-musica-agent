@@ -103,3 +103,20 @@ def test_human_handoff_silences_the_bot_until_resumed(store):
 def test_triage_cannot_transfer_to_human_itself():
     triage = build_agents("x", "y")
     assert "transferir_para_humano" not in [t.name for t in triage.tools]
+
+
+def test_empty_reply_is_retried_then_apologises_instead_of_sending_blank(store):
+    agent, _, _ = agent_with([[assistant_message("")], [assistant_message("Oi, tudo bem?")]], [])
+    out = go(service.handle_message(LUCAS, "oi", store=store, agent=agent))
+    assert out["reply"] == "Oi, tudo bem?" and out["meta"]["guardrail"] == "reescrito"
+    agent, _, _ = agent_with([[assistant_message("")], [assistant_message("")]], [])
+    out = go(service.handle_message(ANA, "oi", store=store, agent=agent))
+    assert out["reply"] == service.EMPTY_FALLBACK and out["state"] == "bot" and out["meta"]["guardrail"] == "bloqueado"
+
+
+def test_claimed_transfer_without_the_tool_is_made_true(store):
+    claim = "Claro, vou passar você para um atendente humano agora."
+    agent, _, _ = agent_with([[assistant_message(claim)], [assistant_message(claim)]], [])
+    out = go(service.handle_message(ANA, "quero falar com uma pessoa", store=store, agent=agent))
+    assert out["reply"] == claim and out["state"] == "human" and out["meta"]["guardrail"] == "corrigido"
+    assert go(store.state("67996547821"))["status"] == "human"                            # a promessa virou fato no banco

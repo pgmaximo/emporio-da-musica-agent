@@ -120,6 +120,8 @@ def return_assessment(status: str, order_date: str, delivery: str, today: date) 
                                     "reembolso na forma de pagamento original em até 10 dias úteis; frete de devolução por conta da loja",
         "troca_por_defeito_ate": f"{limit_defect:%d/%m/%Y}" + (" (ainda no prazo)" if today <= limit_defect else " (prazo encerrado)"),
         "garantia_legal_ate": f"{limit_warranty:%d/%m/%Y}" + (" (vigente)" if today <= limit_warranty else " (encerrada)"),
+        "garantia_do_fabricante": "a maioria dos fabricantes dá de 6 meses a 2 anos (ver o certificado que acompanha o produto); depois dos 30 dias de troca "
+                                  "o cliente aciona o fabricante e a loja pode intermediar se ele pedir (§4.2 e §8.2)",
         "explicacao": ("Dentro do prazo de arrependimento de 7 dias." if ok else
                        "Fora do prazo de arrependimento de 7 dias. Se o motivo for defeito de fabricação, valem a troca em 30 dias "
                        "(§4.2) e a garantia legal de 90 dias (§8.1)."),

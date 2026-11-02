@@ -118,7 +118,7 @@ def product_view(p: Product, detail: bool = False) -> dict:
                     desconto=f"{promo['percent']:g}%", promocao=promo["name"])
     else:
         view["preco"] = brl(p.price)
-        if p.id in _expired_promotions():
+        if detail and p.id in _expired_promotions():  # só no detalhe: citada em toda busca, confunde quem não perguntou por promoção
             view["promocao_anterior_encerrada"] = ", ".join(_expired_promotions()[p.id])
     if detail:
         view.update(descricao=p.description, especificacoes=p.specs)

@@ -37,3 +37,12 @@ def unverified_prices(reply: str, tool_outputs: list[str], user_text: str = "") 
     allowed |= _plain_numbers(user_text)  # o cliente pode citar um orçamento e o agente repeti-lo
     bad = [v for v in money_values(reply) if v not in allowed]
     return sorted(f"R$ {v:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".") for v in bad)
+
+
+# "Vou passar você para um atendente" / "já acionei um atendente": promessa de ação que só é verdadeira se a tool foi chamada.
+_CLAIM = re.compile(r"\b(vou|irei|já|acabei de|estou)\b[^.!?\n]{0,40}\b(pass\w+|encaminh\w+|transfer\w+|acion\w+|cham\w+)\b[^.!?\n]{0,40}\b(atendente|humano|pessoa|equipe)\b", re.I)
+_OFFER = re.compile(r"\b(posso|se quiser|quer que|caso queira|se preferir|gostaria)\b", re.I)
+
+
+def claims_transfer(reply: str) -> bool:
+    return bool(_CLAIM.search(reply)) and not _OFFER.search(reply)

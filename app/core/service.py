@@ -19,8 +19,12 @@ MAX_INPUT_CHARS = 1000
 HISTORY_MESSAGES = 20
 SAFE_FALLBACK = ("Desculpa, não consegui confirmar essa informação com segurança agora. "
                  "Vou chamar um atendente para te ajudar, tudo bem? Retorno em até 24 horas úteis.")
-CORRECTION = ("[verificação interna] Sua resposta citou valores em reais que NÃO vieram das ferramentas: {bad}. "
-              "Reescreva a resposta usando somente valores retornados pelas ferramentas (chame-as de novo se precisar).")
+EMPTY_FALLBACK = "Desculpa, tive um problema para responder agora. Pode repetir a sua pergunta?"
+CORRECTIONS = {
+    "empty": "Sua resposta veio vazia. Responda ao cliente.",
+    "price": "Sua resposta citou valores em reais que NÃO vieram das ferramentas ({bad}). Use somente valores retornados pelas ferramentas (chame-as de novo se precisar).",
+    "transfer": "Você disse que passou o cliente para um atendente, mas não chamou transferir_para_humano. Chame a ferramenta agora, com motivo e resumo, e então responda.",
+}
 
 _store: Store | None = None
 _agent: Agent | None = None
@@ -55,6 +59,29 @@ async def _run(agent: Agent, history: list[dict], text: str, ctx: ChatContext, c
     return await Runner.run(agent, items, context=ctx, max_turns=8, run_config=config)
 
 
+def _problems(reply: str, ctx: ChatContext, text: str) -> dict[str, str]:
+    found = {}
+    if not reply:
+        found["empty"] = ""
+    elif bad := guardrails.unverified_prices(reply, [t["result"] for t in ctx.trace], text):
+        found["price"] = ", ".join(bad)
+    if reply and guardrails.claims_transfer(reply) and not ctx.human_handoff:
+        found["transfer"] = ""
+    return found
+
+
+def _resolve(problems: dict, reply: str, ctx: ChatContext, text: str) -> tuple[str, str]:
+    """Última linha de defesa depois de duas tentativas. Preço sem origem tem prioridade, depois resposta vazia."""
+    if "price" in problems:
+        ctx.human_handoff = {"motivo": "guardrail de preços", "resumo": f"Cliente: {text!r}. Valores não verificados: {problems['price']}"}
+        return SAFE_FALLBACK, "bloqueado"
+    if "empty" in problems:
+        return EMPTY_FALLBACK, "bloqueado"
+    # O modelo prometeu a transferência e não a fez: fazemos, e a promessa passa a ser verdadeira.
+    ctx.human_handoff = {"motivo": "cliente pediu um atendente", "resumo": f"Cliente: {text!r}. A transferência foi concluída pelo sistema."}
+    return reply, "corrigido"
+
+
 async def handle_message(phone: str, text: str, *, store: Store | None = None, agent: Agent | None = None) -> dict:
     store, agent = store or get_store(), agent or get_agent()
     phone, text = data.normalize_phone(phone), (text or "").strip()[:MAX_INPUT_CHARS]
@@ -70,19 +97,19 @@ async def handle_message(phone: str, text: str, *, store: Store | None = None, a
     customer = data.customer_by_phone(phone)
     ctx = ChatContext(phone=phone, customer=customer, user_text=text)
     history = await store.history(phone, HISTORY_MESSAGES)
-    runs = []  # uma por tentativa: os bastidores somam caminho e tokens de todas
+    runs, correction = [], None  # uma execução por tentativa: os bastidores somam caminho e tokens de todas
     try:
-        runs.append(await _run(agent, history, text, ctx))
-        reply, check = str(runs[-1].final_output or "").strip(), "ok"
-        bad = guardrails.unverified_prices(reply, [t["result"] for t in ctx.trace], text)
-        if bad:  # uma chance de corrigir; se persistir, não deixa um preço não verificado chegar ao cliente
-            runs.append(await _run(agent, history, text, ctx, CORRECTION.format(bad=", ".join(bad))))
+        for attempt in (0, 1):
+            runs.append(await _run(agent, history, text, ctx, correction))
             reply = str(runs[-1].final_output or "").strip()
-            still = guardrails.unverified_prices(reply, [t["result"] for t in ctx.trace], text)
-            check = "reescrito" if not still else "bloqueado"
-            if still:
-                log.warning("guardrail bloqueou resposta com valores %s", still)
-                reply, ctx.human_handoff = SAFE_FALLBACK, {"motivo": "guardrail de preços", "resumo": f"Cliente: {text!r}. Valores não verificados: {still}"}
+            problems = _problems(reply, ctx, text)
+            if not problems:
+                check = "ok" if attempt == 0 else "reescrito"
+                break
+            correction = "[verificação interna] " + " ".join(CORRECTIONS[k].format(bad=problems.get("price", "")) for k in problems)
+        else:  # a segunda tentativa também falhou: nada de preço sem origem, resposta vazia ou transferência falsa chega ao cliente
+            log.warning("verificação falhou: %s", sorted(problems))
+            reply, check = _resolve(problems, reply, ctx, text)
     except Exception as exc:  # noqa: BLE001 - qualquer falha de API/modelo vira indisponibilidade; nada é persistido
         log.exception("falha ao executar o agente")
         raise AgentUnavailable(str(exc)) from exc
