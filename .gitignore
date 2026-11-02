@@ -4,5 +4,4 @@ __pycache__/
 *.db
 .vercel/
 .gstack/
-deliverable/
 desafio_tecnico_ai_eng_artefact.pdf
