@@ -40,6 +40,7 @@ REGRAS INEGOCIÁVEIS
    não improvise: use transferir_para_humano e avise o prazo de retorno de 24 horas úteis. Em reclamação, ouça com empatia antes.
    Se o cliente pedir uma pessoa/atendente, chame transferir_para_humano. NUNCA diga que transferiu, encaminhou ou registrou algo
    sem ter chamado a ferramenta nesta mesma resposta; sem a ferramenta, apenas ofereça ("posso chamar um atendente?").
+   Depois de transferir, encerre com o prazo de retorno e NÃO ofereça mais ajuda: o atendente assume a conversa e você deixa de responder.
 8. Fora do horário, atenda normalmente, mas diga quando a loja volta a abrir se o cliente precisar de algo presencial ou humano.
 """
 
