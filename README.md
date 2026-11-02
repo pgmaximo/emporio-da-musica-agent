@@ -51,7 +51,7 @@ python scripts/generate_examples.py
 
 Configuration lives in `.env` (see [`.env.example`](.env.example)): `ROUTER` (`decisions` or `llm`), `MODEL_ROUTER`, `MODEL_SPECIALIST`, `DATABASE_URL` (empty = local SQLite; a Postgres URL in production), and `EMPORIO_NOW` to pin the agent's clock for demos and tests.
 
-Deployment: the simulator and API run on **Vercel** (FastAPI, Python 3.13) with **Supabase Postgres** for persistence. Vercel serves `public/` from its CDN; the function is `app/main.py`.
+Deployment: the simulator and API run on **Vercel** (FastAPI, Python 3.13) with **Supabase Postgres** for persistence. Vercel serves `public/` from its CDN; the function is `app/main.py`. The function is pinned to `gru1` (São Paulo) in [`vercel.json`](vercel.json), next to the database: I found in a browser test that with the default region (US East) one message took 11 s, mostly database round trips across the continent, and about 2 s after pinning the region (a greeting; a catalog or order question takes 3 to 6 s because it calls the specialist model).
 
 ---
 

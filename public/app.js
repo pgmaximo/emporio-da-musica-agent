@@ -9,7 +9,7 @@ const STRANGER_CHIPS = ["Qual o status do pedido 5?", "Quanto fica o Takamine GD
 const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 // WhatsApp-style formatting (*negrito*, quebras de linha) depois de escapar o HTML.
 const fmt = (s) => esc(s).replace(/\*(\S(?:.*?\S)?)\*/g, "<b>$1</b>").replace(/\n/g, "<br>");
-const hhmm = (iso) => (iso ? new Date(iso) : new Date()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const hhmm = (iso) => (iso ? new Date(iso) : new Date()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Campo_Grande" });  // o mesmo fuso do relógio do agente
 const initials = (name) => name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
 
 async function api(path, options) {
