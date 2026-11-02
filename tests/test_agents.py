@@ -89,10 +89,17 @@ def test_history_persists_per_phone_and_window_feeds_the_model(store):
 
 
 def test_human_handoff_silences_the_bot_until_resumed(store):
+    root = build_agents("x", "y")
     agent, _, _ = agent_with(
+        [[function_call(to(root, "Politicas"), {}, call_id="h1")]],
         [[function_call("transferir_para_humano", {"motivo": "reclamação", "resumo": "Cliente irritado com atraso"}, call_id="t1")],
-         [assistant_message("Vou chamar um atendente!")]], [])
+         [assistant_message("Vou chamar um atendente!")]])
     out = go(service.handle_message(ANA, "quero falar com uma pessoa", store=store, agent=agent))
-    assert out["state"] == "human" and out["handoff"]["motivo"] == "reclamação"
+    assert out["state"] == "human" and out["handoff"]["motivo"] == "reclamação" and out["meta"]["agentes"] == ["Triagem", "Politicas"]
     again = go(service.handle_message(ANA, "alô?", store=store, agent=agent))        # sem steps no modelo: se chamasse, falharia
     assert again["reply"] is None and again["state"] == "human"
+
+
+def test_triage_cannot_transfer_to_human_itself():
+    triage = build_agents("x", "y")
+    assert "transferir_para_humano" not in [t.name for t in triage.tools]

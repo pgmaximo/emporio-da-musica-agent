@@ -51,3 +51,8 @@ def test_orders_are_scoped_to_the_customer():
 def test_category_names_match_tool_literals():
     from app.core.tools import CATEGORIES
     assert set(CATEGORIES) == set(data.categories().values())
+
+
+def test_alternatives_prefer_similar_instruments():
+    alts = data.search_products("Shelby SN-7C")["alternativas_disponiveis"]
+    assert all("7 Cordas" in a["nome"] for a in alts[:2])  # um violão de 7 cordas se substitui por outro de 7 cordas

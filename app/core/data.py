@@ -143,9 +143,16 @@ def _score(p: Product, tokens: list[str]) -> float:
     return total / len(tokens)
 
 
+def sold_categories() -> list[str]:
+    """Categorias que têm ao menos um produto à venda (o manual cita sopro e cordas, mas o catálogo não tem)."""
+    return sorted({p.category for p in products().values() if p.status == "active" and p.stock > 0})
+
+
 def alternatives(p: Product, n: int = 3) -> list[Product]:
+    """Mesma categoria e à venda; primeiro o que o nome tem em comum (ex.: '7 cordas nylon', sem contar a marca), depois o preço mais próximo."""
+    traits = set(_tokens(p.name)[1:])
     pool = [q for q in products().values() if q.id != p.id and q.category_id == p.category_id and q.status == "active" and q.stock > 0]
-    return sorted(pool, key=lambda q: abs(current_price(q) - current_price(p)))[:n]
+    return sorted(pool, key=lambda q: (-len(traits & set(_tokens(q.name)[1:])), abs(current_price(q) - current_price(p))))[:n]
 
 
 def search_products(query: str = "", category: str | None = None, min_price: float | None = None,
