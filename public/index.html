@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Empório da Música · Simulador de canal</title>
+<meta name="description" content="Simulador do canal de WhatsApp da Empório da Música: converse com o agente de atendimento e veja os bastidores.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎸%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app" id="app" data-view="contacts">
+  <aside class="side">
+    <header class="brand"><span class="logo">🎸</span><div><b>Empório da Música</b><small>Simulador de canal · protótipo</small></div></header>
+    <p class="clock" id="clock"></p>
+    <ul id="contacts" class="contacts" aria-label="Contatos de teste"></ul>
+    <form class="custom" id="custom"><input id="customPhone" inputmode="tel" placeholder="Outro número: (67) 9…" aria-label="Outro número"><button>Abrir</button></form>
+    <p class="note">Mesmo núcleo que atenderá o WhatsApp real da loja (webhook em <code>/webhook/whatsapp</code>). Aqui, cada contato é um número de cliente.</p>
+  </aside>
+
+  <main class="chat">
+    <header class="bar">
+      <button class="icon back" id="back" aria-label="Voltar">←</button>
+      <span class="avatar" id="avatar"></span>
+      <div class="who"><b id="title">Selecione um contato</b><small id="subtitle"></small></div>
+      <button class="ghost" id="toggleDrawer" aria-pressed="false">Bastidores</button>
+      <button class="icon" id="reset" title="Apagar esta conversa" aria-label="Apagar conversa">🗑</button>
+    </header>
+    <div class="banner" id="banner" hidden></div>
+    <div class="messages" id="messages" aria-live="polite"><p class="empty">Escolha um contato à esquerda para começar.</p></div>
+    <div class="chips" id="chips"></div>
+    <form class="composer" id="composer">
+      <input id="input" placeholder="Digite uma mensagem" autocomplete="off" maxlength="1000" disabled aria-label="Mensagem">
+      <button id="send" disabled aria-label="Enviar">➤</button>
+    </form>
+  </main>
+
+  <aside class="drawer" id="drawer" hidden>
+    <header><b>Bastidores</b><button class="icon" id="closeDrawer" aria-label="Fechar">✕</button></header>
+    <div id="backstage"><p class="empty">Clique em “ver bastidores” numa resposta do assistente para ver quem respondeu, quais ferramentas foram usadas e quanto custou em tokens.</p></div>
+  </aside>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

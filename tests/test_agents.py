@@ -45,6 +45,7 @@ def test_invented_price_is_rewritten_once_then_passes(store):
          [assistant_message("Sai por R$ 2.199,00.")]])
     out = go(service.handle_message(LUCAS, "preço do GD20?", store=store, agent=agent))
     assert out["reply"] == "Sai por R$ 2.199,00." and out["meta"]["guardrail"] == "reescrito"
+    assert out["meta"]["agentes"] == ["Triagem", "Catalogo"]  # o caminho da 1ª tentativa não se perde na reescrita
 
 
 def test_invented_price_twice_is_blocked_and_handed_to_human(store):

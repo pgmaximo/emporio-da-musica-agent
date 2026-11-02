@@ -7,3 +7,4 @@ __pycache__/
 *.sqlite3
 .vercel/
 desafio_tecnico_ai_eng_artefact.pdf
+.gstack/

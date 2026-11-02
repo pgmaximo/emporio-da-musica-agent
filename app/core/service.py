@@ -70,13 +70,14 @@ async def handle_message(phone: str, text: str, *, store: Store | None = None, a
     customer = data.customer_by_phone(phone)
     ctx = ChatContext(phone=phone, customer=customer, user_text=text)
     history = await store.history(phone, HISTORY_MESSAGES)
+    runs = []  # uma por tentativa: os bastidores somam caminho e tokens de todas
     try:
-        result = await _run(agent, history, text, ctx)
-        reply, check = str(result.final_output or "").strip(), "ok"
+        runs.append(await _run(agent, history, text, ctx))
+        reply, check = str(runs[-1].final_output or "").strip(), "ok"
         bad = guardrails.unverified_prices(reply, [t["result"] for t in ctx.trace], text)
         if bad:  # uma chance de corrigir; se persistir, não deixa um preço não verificado chegar ao cliente
-            result = await _run(agent, history, text, ctx, CORRECTION.format(bad=", ".join(bad)))
-            reply = str(result.final_output or "").strip()
+            runs.append(await _run(agent, history, text, ctx, CORRECTION.format(bad=", ".join(bad))))
+            reply = str(runs[-1].final_output or "").strip()
             still = guardrails.unverified_prices(reply, [t["result"] for t in ctx.trace], text)
             check = "reescrito" if not still else "bloqueado"
             if still:
@@ -86,11 +87,11 @@ async def handle_message(phone: str, text: str, *, store: Store | None = None, a
         log.exception("falha ao executar o agente")
         raise AgentUnavailable(str(exc)) from exc
 
-    path = [agent.name]
-    path += [i.target_agent.name for i in result.new_items if isinstance(i, HandoffOutputItem)]
-    usage = result.context_wrapper.usage
+    path = list(dict.fromkeys([agent.name] + [i.target_agent.name for r in runs for i in r.new_items if isinstance(i, HandoffOutputItem)]))
+    usages = [r.context_wrapper.usage for r in runs]
     meta = {"agentes": path, "tools": _trace_view(ctx), "guardrail": check, "latencia_ms": round((time.perf_counter() - started) * 1000),
-            "tokens": {"entrada": usage.input_tokens, "saida": usage.output_tokens, "total": usage.total_tokens, "chamadas": usage.requests},
+            "tokens": {"entrada": sum(u.input_tokens for u in usages), "saida": sum(u.output_tokens for u in usages),
+                       "total": sum(u.total_tokens for u in usages), "chamadas": sum(u.requests for u in usages)},
             "cliente": customer["primeiro_nome"] if customer else None}
     await store.add(phone, "user", text)
     await store.add(phone, "assistant", reply, meta)
