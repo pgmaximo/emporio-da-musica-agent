@@ -1,0 +1,26 @@
+name: Router eval
+
+# Calls the OpenAI API (paid), so it runs on demand only.
+# Needs the repository secret OPENAI_API_KEY.
+on:
+  workflow_dispatch:
+    inputs:
+      min_accuracy:
+        description: "Minimum share of the 28 labelled messages routed correctly"
+        default: "0.9"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run the router eval
+        run: python scripts/eval_router.py
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          EVAL_MIN_ACCURACY: ${{ inputs.min_accuracy }}

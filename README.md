@@ -1,5 +1,7 @@
 # Empório da Música: customer-service agent for WhatsApp
 
+[![CI](https://github.com/pgmaximo/emporio-da-musica-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/pgmaximo/emporio-da-musica-agent/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-1F3F94?style=flat-square)](LICENSE)
+
 A prototype of the customer-service agent for **Empório da Música**, a musical-instrument store in Campo Grande/MS. It answers on the store's behalf: product prices and availability, order status, and policy questions (returns, shipping, payment, opening hours), and it politely refuses everything outside the store's scope.
 
 - **Live demo:** <https://emporio-da-musica-agent-beta.vercel.app> (a WhatsApp-style simulator; every message you send is answered by the agent)
@@ -35,6 +37,19 @@ python -m app.cli --phone "(67) 99654-7821" --bastidores  # chat as Ana; --basti
 
 ```bash
 uvicorn app.main:app --reload                             # then open http://127.0.0.1:8000
+```
+
+**Run the tests** (36 unit and scripted-model tests: business rules, data, privacy, guardrails, routing, retries, hand-off; no API key needed, they also run in CI on every push):
+
+```bash
+pip install -r requirements-dev.txt
+ruff check . && pytest -q
+```
+
+**Run the router eval** (calls the real models; exits with an error if production routing falls below `EVAL_MIN_ACCURACY`, default 0.9; also available as the manual "Router eval" workflow in GitHub Actions):
+
+```bash
+python scripts/eval_router.py
 ```
 
 **Regenerate the example conversations** (calls the real model, rewrites `public/examples.json`):
@@ -200,7 +215,7 @@ How large Brazilian companies run agents on WhatsApp (Magalu, Movida, ClickBus) 
 ## 5. Known limitations and what I would do with more time
 
 - **The real WhatsApp connection is not built.** It needs a Meta Cloud API webhook (`GET` verification, `POST` with `X-Hub-Signature-256` validation, replies through the Graph API, the 24-hour customer-service window and templates for out-of-window messages). The core is already channel-independent, so it is an adapter of roughly 60 lines. I cut it to keep the case simple, as the brief asks.
-- **Non-determinism of a small model.** Empty replies, skipped tool calls and "I did it" claims happen occasionally. The verification loop catches empty replies, unsupported prices and fake transfers, but not every kind of wrong answer (for example, asking the customer to repeat something it already knew). I measured and mitigated the worst one (tool use 5/8 → 8/8) but there are **no automated tests or evaluation suite in the final tree**: I wrote unit tests (rules, data, privacy, guardrails) and scripted-model tests (routing, retries, hand-off) while building, and removed them to keep the repository simple (they are in the git history). Quality is checked with five recorded scenarios and about two dozen manual probes. Next step: a labelled regression set of ~50 conversations with assertions on routing, tool calls and forbidden content, run in CI, plus an LLM judge for tone.
+- **Non-determinism of a small model.** Empty replies, skipped tool calls and "I did it" claims happen occasionally. The verification loop catches empty replies, unsupported prices and fake transfers, but not every kind of wrong answer (for example, asking the customer to repeat something it already knew). I measured and mitigated the worst one (tool use 5/8 → 8/8) and the automated coverage is still narrow: 36 unit tests (rules, data, privacy, guardrails) and scripted-model tests (routing, retries, hand-off) run in CI, and the 28-message router eval runs on demand with a pass threshold. Conversation quality is checked with five recorded scenarios and about two dozen manual probes. Next step: a labelled regression set of ~50 conversations with assertions on routing, tool calls and forbidden content, run in CI, plus an LLM judge for tone.
 - **The router depends on a beta API that supports a single model** (`gpt-6-luna`). The triage agent is the safety net and the reason it is still in the code. I did not test behaviour under rate limiting or a long outage, and the 28-message comparison above is too small to claim an accuracy figure.
 - **History is a sliding window of 20 messages** with no summarisation.
 - **Holidays**: only fixed-date national holidays are known; Carnival, Good Friday and Corpus Christi are not.
@@ -219,7 +234,7 @@ I built this with **Claude Code** (Anthropic's CLI agent): Claude Opus for plann
 
 1. **Reading and brainstorming first.** I had it read the case, the policy PDF and the six CSVs, and report the traps in the data (contradictions in the manual, a catalog smaller than described, stale dates, privacy). We debated the architecture before any code was written.
 2. **Research.** It researched how large companies run WhatsApp agents and Meta's chatbot policy, and verified the current OpenAI Agents SDK, Vercel and Supabase documentation instead of relying on memory (for example, which reasoning-effort values each model family accepts).
-3. **Plan, then build in small commits**, with unit tests for the rules and scripted-model tests for orchestration, routing, verification and privacy while building (removed from the final tree at the end to keep the repository simple; they are in the git history). I mutation-checked the privacy test (breaking the per-customer filter made two tests fail).
+3. **Plan, then build in small commits**, with unit tests for the rules and scripted-model tests for orchestration, routing, verification and privacy while building; they live in `tests/` and run in CI. I mutation-checked the privacy test (breaking the per-customer filter made two tests fail).
 4. **Run the real thing and read the conversations.** The most valuable step: the generated examples exposed bugs the tests could not (an empty reply, a transfer promised but not performed, a skipped calculation). Each became a fix in the code or the prompt.
 5. **Visual check in a browser** (desktop and mobile widths), which found a bug in how the "behind the scenes" panel summed retries.
 6. **Integrations through connectors**: GitHub repository, Supabase project (tables, row-level security, a least-privilege role) and Vercel were set up through the assistant's tools, with me approving each outward-facing action.
