@@ -84,7 +84,6 @@ async def main():
     rows = [await one(c, sem) for c in CASES]
     n = len(rows)
     d_ok = sum(1 for w, d, _ in rows if d and d["destino"] == w)
-    d_conf = [(w, d) for w, d, _ in rows if d and d["confianca"] >= router.min_confidence()]
     t_ok = sum(1 for w, _, (p, _) in rows if p == w)
     # com fallback: confiante e não-geral -> especialista direto; senão a Triagem decide
     fb_ok = sum(1 for w, d, (p, _) in rows if (d["destino"] if d and d["confianca"] >= router.min_confidence() and d["destino"] != "geral" else p) == w)
@@ -99,5 +98,13 @@ async def main():
     print("\nconfiança mínima/ média nas certas:", min((d['confianca'] for w, d, _ in rows if d and d['destino'] == w), default=None))
     print("confiança nas erradas:", [(d['destino'], d['confianca']) for w, d, _ in rows if d and d['destino'] != w])
 
+    # CI gate: production routing (Decisions + fallback) must stay above EVAL_MIN_ACCURACY (default 0.9)
+    floor = float(os.getenv("EVAL_MIN_ACCURACY", "0.9"))
+    if fb_ok / n < floor:
+        print(f"\nFAIL: {fb_ok}/{n} = {fb_ok / n:.0%} < {floor:.0%}")
+        return 1
+    print(f"\nOK: {fb_ok}/{n} = {fb_ok / n:.0%} >= {floor:.0%}")
+    return 0
 
-asyncio.run(main())
+
+sys.exit(asyncio.run(main()))
