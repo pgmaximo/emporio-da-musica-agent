@@ -1,5 +1,7 @@
 # Empório da Música: customer-service agent for WhatsApp
 
+**English** · [Português](README.pt-BR.md)
+
 [![CI](https://github.com/pgmaximo/emporio-da-musica-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/pgmaximo/emporio-da-musica-agent/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-1F3F94?style=flat-square)](LICENSE)
 
 A prototype of the customer-service agent for **Empório da Música**, a musical-instrument store in Campo Grande/MS. It answers on the store's behalf: product prices and availability, order status, and policy questions (returns, shipping, payment, opening hours), and it politely refuses everything outside the store's scope.
@@ -8,7 +10,7 @@ A prototype of the customer-service agent for **Empório da Música**, a musical
 - **Repository:** <https://github.com/pgmaximo/emporio-da-musica-agent>
 - **Example conversations:** 5 real conversations recorded from the agent, shown **inside the live demo** (group "Exemplos gravados" in the contact list, as read-only chat history with the "Bastidores" drawer and an English toggle) and stored in [`public/examples.json`](public/examples.json). They are also in the appendix of the PDF submission.
 
-> The customer-facing text is **Brazilian Portuguese** on purpose (the store's customers speak it). Everything else (this README, code-level docs, example headers) is in English.
+> The customer-facing text is **Brazilian Portuguese** on purpose (the store's customers speak it). Everything else (this README, code-level docs, example headers) is in English; a Portuguese version of this README is in [`README.pt-BR.md`](README.pt-BR.md).
 
 ## Contents
 
@@ -262,5 +264,7 @@ app/           the agent, flat: service, router, agents, tools, rules, data, gua
                main.py = FastAPI (simulator API), cli.py = terminal chat
 public/        simulator page (plain HTML/CSS/JS, no build step) + examples.json (the 5 recorded conversations)
 data/          the store's CSVs and policies (politicas.md = transcription of the PDF)
-scripts/       generate_examples.py (examples), eval_router.py (router comparison)
+scripts/       generate_examples.py (examples), eval_router.py (router comparison and CI gate)
+tests/         unit and scripted-model tests (pytest), run in CI
+.github/       CI workflow (ruff + pytest) and the on-demand router eval
 ```
